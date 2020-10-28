@@ -5,7 +5,7 @@ use crate::rusttls::stream::Stream;
 
 use futures_core::ready;
 use futures_io::{AsyncRead, AsyncWrite};
-use rustls::ServerSession;
+use rustls::{Certificate, ServerSession};
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -23,11 +23,12 @@ pub struct TlsStream<IO> {
 }
 
 impl<IO> TlsStream<IO> {
-    pub fn peer_certificates(&self) -> Option<Vec<Vec<u8>>> {
-        match self.session.get_peer_certificates() {
-            Some(certs) => Some(certs.into_iter().map(|cert| cert.0).collect()),
-            None => None,
-        }
+    /// Retrieves the certificate chain used by the client,
+    /// if client authentication was completed.
+    ///
+    /// The return value is None until this value is available.
+    pub fn client_certificates(&self) -> Option<Vec<Certificate>> {
+        self.session.get_peer_certificates()
     }
 }
 
