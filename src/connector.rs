@@ -3,13 +3,12 @@ use crate::common::tls_state::TlsState;
 use crate::client;
 
 use futures_io::{AsyncRead, AsyncWrite};
-use rustls::{ClientConfig, ClientSession};
-use std::future::Future;
+use rustls::{ClientConfig, ClientConnection, OwnedTrustAnchor, RootCertStore, ServerName};
 use std::io;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use webpki::DNSNameRef;
+use std::{convert::TryFrom, future::Future};
 
 /// The TLS connecting part. The acceptor drives
 /// the client side of the TLS handshake process. It works
@@ -64,10 +63,20 @@ impl From<ClientConfig> for TlsConnector {
 
 impl Default for TlsConnector {
     fn default() -> Self {
-        let mut config = ClientConfig::new();
-        config
-            .root_store
-            .add_server_trust_anchors(&webpki_roots::TLS_SERVER_ROOTS);
+        let mut root_store = RootCertStore::empty();
+        root_store.add_server_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
+            OwnedTrustAnchor::from_subject_spki_name_constraints(
+                ta.subject,
+                ta.spki,
+                ta.name_constraints,
+            )
+        }));
+
+        let config = rustls::ClientConfig::builder()
+            .with_safe_defaults()
+            .with_root_certificates(root_store)
+            .with_no_client_auth();
+
         Arc::new(config).into()
     }
 }
@@ -107,9 +116,9 @@ impl TlsConnector {
     fn connect_with<'a, IO, F>(&self, domain: impl AsRef<str>, stream: IO, f: F) -> Connect<IO>
     where
         IO: AsyncRead + AsyncWrite + Unpin,
-        F: FnOnce(&mut ClientSession),
+        F: FnOnce(&mut ClientConnection),
     {
-        let domain = match DNSNameRef::try_from_ascii_str(domain.as_ref()) {
+        let domain = match ServerName::try_from(domain.as_ref()) {
             Ok(domain) => domain,
             Err(_) => {
                 return Connect(ConnectInner::Error(Some(io::Error::new(
@@ -119,8 +128,19 @@ impl TlsConnector {
             }
         };
 
-        let mut session = ClientSession::new(&self.inner, domain);
+        let mut session = match ClientConnection::new(self.inner.clone(), domain) {
+            Ok(conn) => conn,
+            Err(_) => {
+                return Connect(ConnectInner::Error(Some(io::Error::new(
+                    io::ErrorKind::Other,
+                    "failed to create client connection",
+                ))))
+            }
+        };
+
         f(&mut session);
+
+        let session = session.into();
 
         #[cfg(not(feature = "early-data"))]
         {

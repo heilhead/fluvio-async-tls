@@ -1,12 +1,12 @@
+use async_std::channel::bounded;
 use async_std::io;
 use async_std::net::{TcpListener, TcpStream};
 use async_std::prelude::*;
-use async_std::sync::channel;
 use async_std::task;
-use async_tls::{TlsAcceptor, TlsConnector};
+use fluvio_async_tls::{TlsAcceptor, TlsConnector};
 use lazy_static::lazy_static;
-use rustls::internal::pemfile::{certs, rsa_private_keys};
-use rustls::{ClientConfig, ServerConfig};
+use rustls::{Certificate, ClientConfig, PrivateKey, RootCertStore, ServerConfig};
+use rustls_pemfile::{certs, rsa_private_keys};
 use std::io::{BufReader, Cursor};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -17,29 +17,35 @@ const RSA: &str = include_str!("end.rsa");
 
 lazy_static! {
     static ref TEST_SERVER: (SocketAddr, &'static str, &'static str) = {
-        let cert = certs(&mut BufReader::new(Cursor::new(CERT))).unwrap();
+        let cert = certs(&mut BufReader::new(Cursor::new(CERT)))
+            .unwrap()
+            .into_iter()
+            .map(Certificate)
+            .collect::<Vec<_>>();
         let mut keys = rsa_private_keys(&mut BufReader::new(Cursor::new(RSA))).unwrap();
 
-        let mut config = ServerConfig::new(rustls::NoClientAuth::new());
-        config
-            .set_single_cert(cert, keys.pop().unwrap())
-            .expect("invalid key or certificate");
+        let config = ServerConfig::builder()
+            .with_safe_defaults()
+            .with_no_client_auth()
+            .with_single_cert(cert, keys.pop().map(PrivateKey).unwrap())
+            .unwrap();
+
         let acceptor = TlsAcceptor::from(Arc::new(config));
 
-        let (send, recv) = channel(1);
+        let (send, recv) = bounded(1);
 
         task::spawn(async move {
             let addr = SocketAddr::from(([127, 0, 0, 1], 0));
             let listener = TcpListener::bind(&addr).await?;
 
-            send.send(listener.local_addr()?).await;
+            send.send(listener.local_addr()?).await.unwrap();
 
             let mut incoming = listener.incoming();
             while let Some(stream) = incoming.next().await {
                 let acceptor = acceptor.clone();
                 task::spawn(async move {
                     use futures_util::io::AsyncReadExt;
-                    let stream = acceptor.accept(stream?).await?;
+                    let stream = acceptor.accept(stream?).unwrap().await?;
                     let (mut reader, mut writer) = stream.split();
                     io::copy(&mut reader, &mut writer).await?;
                     Ok(()) as io::Result<()>
@@ -79,9 +85,16 @@ async fn start_client(addr: SocketAddr, domain: &str, config: Arc<ClientConfig>)
 fn pass() {
     let (addr, domain, chain) = start_server();
 
-    let mut config = ClientConfig::new();
-    let mut chain = BufReader::new(Cursor::new(chain));
-    config.root_store.add_pem_file(&mut chain).unwrap();
+    let mut root_store = RootCertStore::empty();
+    root_store
+        .add_parsable_certificates(&certs(&mut BufReader::new(Cursor::new(chain))).unwrap()[..]);
+
+    let mut config = rustls::ClientConfig::builder()
+        .with_safe_defaults()
+        .with_root_certificates(root_store)
+        .with_no_client_auth();
+    config.enable_early_data = true;
+
     let config = Arc::new(config);
 
     task::block_on(start_client(addr.clone(), domain, config.clone())).unwrap();
@@ -91,9 +104,16 @@ fn pass() {
 fn fail() {
     let (addr, domain, chain) = start_server();
 
-    let mut config = ClientConfig::new();
-    let mut chain = BufReader::new(Cursor::new(chain));
-    config.root_store.add_pem_file(&mut chain).unwrap();
+    let mut root_store = RootCertStore::empty();
+    root_store
+        .add_parsable_certificates(&certs(&mut BufReader::new(Cursor::new(chain))).unwrap()[..]);
+
+    let mut config = rustls::ClientConfig::builder()
+        .with_safe_defaults()
+        .with_root_certificates(root_store)
+        .with_no_client_auth();
+    config.enable_early_data = true;
+
     let config = Arc::new(config);
 
     assert_ne!(domain, &"google.com");

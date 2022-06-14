@@ -5,20 +5,17 @@ use crate::rusttls::stream::Stream;
 
 use futures_core::ready;
 use futures_io::{AsyncRead, AsyncWrite};
-use rustls::{Certificate, ServerSession};
+use rustls::{Certificate, Connection};
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::{io, mem};
 
-use rustls::Session;
-
 /// The server end of a TLS connection. Can be used like any other bidirectional IO stream.
 /// Wraps the underlying TCP stream.
-#[derive(Debug)]
 pub struct TlsStream<IO> {
     pub(crate) io: IO,
-    pub(crate) session: ServerSession,
+    pub(crate) session: Connection,
     pub(crate) state: TlsState,
 }
 
@@ -28,7 +25,7 @@ impl<IO> TlsStream<IO> {
     ///
     /// The return value is None until this value is available.
     pub fn client_certificates(&self) -> Option<Vec<Certificate>> {
-        self.session.get_peer_certificates()
+        self.session.peer_certificates().map(Vec::from)
     }
 }
 

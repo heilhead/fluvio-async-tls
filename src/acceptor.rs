@@ -2,7 +2,7 @@ use crate::common::tls_state::TlsState;
 use crate::server;
 
 use futures_io::{AsyncRead, AsyncWrite};
-use rustls::{ServerConfig, ServerSession};
+use rustls::{ServerConfig, ServerConnection};
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
@@ -32,7 +32,7 @@ impl TlsAcceptor {
     /// Otherwise, it will return a `Accept` Future, representing the Acceptance part of a
     /// Tls handshake. It will resolve when the handshake is over.
     #[inline]
-    pub fn accept<IO>(&self, stream: IO) -> Accept<IO>
+    pub fn accept<IO>(&self, stream: IO) -> Result<Accept<IO>, rustls::Error>
     where
         IO: AsyncRead + AsyncWrite + Unpin,
     {
@@ -40,19 +40,21 @@ impl TlsAcceptor {
     }
 
     // Currently private, as exposing ServerSessions exposes rusttls
-    fn accept_with<IO, F>(&self, stream: IO, f: F) -> Accept<IO>
+    fn accept_with<IO, F>(&self, stream: IO, f: F) -> Result<Accept<IO>, rustls::Error>
     where
         IO: AsyncRead + AsyncWrite + Unpin,
-        F: FnOnce(&mut ServerSession),
+        F: FnOnce(&mut ServerConnection),
     {
-        let mut session = ServerSession::new(&self.inner);
+        let mut session = ServerConnection::new(self.inner.clone())?;
         f(&mut session);
 
-        Accept(server::MidHandshake::Handshaking(server::TlsStream {
-            session,
-            io: stream,
-            state: TlsState::Stream,
-        }))
+        Ok(Accept(server::MidHandshake::Handshaking(
+            server::TlsStream {
+                session: session.into(),
+                io: stream,
+                state: TlsState::Stream,
+            },
+        )))
     }
 }
 
