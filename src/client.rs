@@ -1,10 +1,13 @@
 //! The client end of a TLS connection.
 
+#[cfg(feature = "early-data")]
+use rustls::client::WriteEarlyData;
+
 use crate::common::tls_state::TlsState;
 use crate::rusttls::stream::Stream;
 use futures_core::ready;
 use futures_io::{AsyncRead, AsyncWrite};
-use rustls::{client::WriteEarlyData, Connection};
+use rustls::Connection;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -214,6 +217,7 @@ where
 }
 
 /// `ClientConnection` specific, returns `false` for `ServerConnection`.
+#[cfg(feature = "early-data")]
 #[inline]
 fn is_early_data_accepted(conn: &Connection) -> bool {
     match conn {
@@ -223,6 +227,7 @@ fn is_early_data_accepted(conn: &Connection) -> bool {
 }
 
 /// `ClientConnection` specific, returns `None` for `ServerConnection`.
+#[cfg(feature = "early-data")]
 #[inline]
 fn early_data(conn: &mut Connection) -> Option<WriteEarlyData> {
     match conn {
