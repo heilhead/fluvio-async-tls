@@ -86,8 +86,7 @@ fn pass() {
     let (addr, domain, chain) = start_server();
 
     let mut root_store = RootCertStore::empty();
-    root_store
-        .add_parsable_certificates(&certs(&mut BufReader::new(Cursor::new(chain))).unwrap()[..]);
+    root_store.add_parsable_certificates(&certs(&mut BufReader::new(Cursor::new(chain))).unwrap());
 
     let mut config = rustls::ClientConfig::builder()
         .with_safe_defaults()
