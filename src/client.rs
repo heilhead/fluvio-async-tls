@@ -170,7 +170,7 @@ where
                         }
                         Err(err) => return Poll::Ready(Err(err)),
                     };
-                    data.extend_from_slice(&buf[..len]);
+                    data.extend_from_slice(&buf);
                     return Poll::Ready(Ok(len));
                 }
 

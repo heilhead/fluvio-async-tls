@@ -12,7 +12,15 @@ fn fetch_mozilla() -> std::io::Result<()> {
         let mut stream = connector.connect("mozilla.org", stream).await?;
 
         stream
-            .write_all(b"GET / HTTP/1.0\r\nHost: mozilla.org\r\n\r\n")
+            .write_all(
+                concat!(
+                    "GET / HTTP/1.1\r\n",
+                    "Host: mozilla.org\r\n",
+                    "Connection: close\r\n",
+                    "\r\n"
+                )
+                .as_bytes(),
+            )
             .await?;
         let mut res = vec![];
         stream.read_to_end(&mut res).await?;
