@@ -1,6 +1,6 @@
 use async_std::net::TcpStream;
 use async_std::task;
-use async_tls::TlsConnector;
+use fluvio_async_tls::TlsConnector;
 use futures_util::io::{AsyncReadExt, AsyncWriteExt};
 
 #[test]

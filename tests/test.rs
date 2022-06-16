@@ -1,9 +1,9 @@
 use async_std::io;
 use async_std::net::{TcpListener, TcpStream};
 use async_std::prelude::*;
-use async_std::sync::channel;
+use async_std::channel;
 use async_std::task;
-use async_tls::{TlsAcceptor, TlsConnector};
+use fluvio_async_tls::{TlsAcceptor, TlsConnector};
 use lazy_static::lazy_static;
 use rustls::internal::pemfile::{certs, rsa_private_keys};
 use rustls::{ClientConfig, ServerConfig};
@@ -26,13 +26,13 @@ lazy_static! {
             .expect("invalid key or certificate");
         let acceptor = TlsAcceptor::from(Arc::new(config));
 
-        let (send, recv) = channel(1);
+        let (send, recv) = channel::bounded(1);
 
         task::spawn(async move {
             let addr = SocketAddr::from(([127, 0, 0, 1], 0));
             let listener = TcpListener::bind(&addr).await?;
 
-            send.send(listener.local_addr()?).await;
+            send.send(listener.local_addr()?).await.unwrap();
 
             let mut incoming = listener.incoming();
             while let Some(stream) = incoming.next().await {
