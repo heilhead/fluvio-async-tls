@@ -100,7 +100,7 @@ where
                 }
 
                 // write early data (fallback)
-                if !is_early_data_accepted(&mut stream.session) {
+                if !is_early_data_accepted(&stream.session) {
                     while *pos < data.len() {
                         let len = ready!(stream.as_mut_pin().poll_write(cx, &data[*pos..]))?;
                         *pos += len;
@@ -180,7 +180,7 @@ where
                 }
 
                 // write early data (fallback)
-                if !is_early_data_accepted(&mut stream.session) {
+                if !is_early_data_accepted(&stream.session) {
                     while *pos < data.len() {
                         let len = ready!(stream.as_mut_pin().poll_write(cx, &data[*pos..]))?;
                         *pos += len;
