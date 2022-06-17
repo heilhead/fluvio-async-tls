@@ -40,5 +40,5 @@ name = "test"
 required-features = ["client", "server"]
 
 [[test]]
-name = "mozilla"
+name = "google"
 required-features = ["client"]
