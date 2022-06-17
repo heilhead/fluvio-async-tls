@@ -24,7 +24,7 @@ use std::{convert::TryFrom, future::Future};
 /// ## Example
 ///
 /// ```rust
-/// use async_tls::TlsConnector;
+/// use fluvio_async_tls::TlsConnector;
 ///
 /// async_std::task::block_on(async {
 ///     let connector = TlsConnector::default();

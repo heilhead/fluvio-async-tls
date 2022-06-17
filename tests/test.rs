@@ -1,4 +1,4 @@
-use async_std::channel::bounded;
+use async_std::channel;
 use async_std::io;
 use async_std::net::{TcpListener, TcpStream};
 use async_std::prelude::*;
@@ -31,8 +31,7 @@ lazy_static! {
             .unwrap();
 
         let acceptor = TlsAcceptor::from(Arc::new(config));
-
-        let (send, recv) = bounded(1);
+        let (send, recv) = channel::bounded(1);
 
         task::spawn(async move {
             let addr = SocketAddr::from(([127, 0, 0, 1], 0));
