@@ -24,16 +24,10 @@ impl TlsState {
     }
 
     pub(crate) fn writeable(&self) -> bool {
-        match *self {
-            TlsState::WriteShutdown | TlsState::FullyShutdown => false,
-            _ => true,
-        }
+        !matches!(*self, TlsState::WriteShutdown | TlsState::FullyShutdown)
     }
 
     pub(crate) fn readable(self) -> bool {
-        match self {
-            TlsState::ReadShutdown | TlsState::FullyShutdown => false,
-            _ => true,
-        }
+        !matches!(self, TlsState::ReadShutdown | TlsState::FullyShutdown)
     }
 }

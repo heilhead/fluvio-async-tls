@@ -104,7 +104,7 @@ impl TlsConnector {
     /// The function will return a `Connect` Future, representing the connecting part of a Tls
     /// handshake. It will resolve when the handshake is over.
     #[inline]
-    pub fn connect<'a, IO>(&self, domain: impl AsRef<str>, stream: IO) -> Connect<IO>
+    pub fn connect<IO>(&self, domain: impl AsRef<str>, stream: IO) -> Connect<IO>
     where
         IO: AsyncRead + AsyncWrite + Unpin,
     {
@@ -113,7 +113,7 @@ impl TlsConnector {
 
     // NOTE: Currently private, exposing ClientSession exposes rusttls
     // Early data should be exposed differently
-    fn connect_with<'a, IO, F>(&self, domain: impl AsRef<str>, stream: IO, f: F) -> Connect<IO>
+    fn connect_with<IO, F>(&self, domain: impl AsRef<str>, stream: IO, f: F) -> Connect<IO>
     where
         IO: AsyncRead + AsyncWrite + Unpin,
         F: FnOnce(&mut ClientConnection),
