@@ -42,12 +42,16 @@ impl<'a> AsyncWrite for Good<'a> {
         Poll::Ready(Ok(len))
     }
 
-    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+    fn poll_flush(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        self.0
+            .process_new_packets()
+            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
         Poll::Ready(Ok(()))
     }
 
-    fn poll_close(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Poll::Ready(Ok(()))
+    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        self.0.send_close_notify();
+        self.poll_flush(cx)
     }
 }
 
@@ -93,6 +97,7 @@ fn stream_good() -> io::Result<()> {
         let (mut server, mut client) = make_pair();
         future::poll_fn(|cx| do_handshake(&mut client, &mut server, cx)).await?;
         io::copy(&mut Cursor::new(FILE), &mut server.writer())?;
+        server.send_close_notify();
 
         {
             let mut good = Good(&mut server);
@@ -102,6 +107,8 @@ fn stream_good() -> io::Result<()> {
             stream.read_to_end(&mut buf).await?;
             assert_eq!(buf, FILE);
             stream.write_all(b"Hello World!").await?;
+            stream.session.send_close_notify();
+            stream.close().await?;
         }
 
         let mut buf = String::new();
@@ -198,12 +205,15 @@ fn stream_eof() -> io::Result<()> {
         let (mut server, mut client) = make_pair();
         future::poll_fn(|cx| do_handshake(&mut client, &mut server, cx)).await?;
 
-        let mut good = Good(&mut server);
-        let mut stream = Stream::new(&mut good, &mut client).set_eof(true);
+        let mut eof_stream = Bad(false);
+        let mut stream = Stream::new(&mut eof_stream, &mut client);
 
         let mut buf = Vec::new();
-        stream.read_to_end(&mut buf).await?;
-        assert_eq!(buf.len(), 0);
+        let res = stream.read_to_end(&mut buf).await;
+        assert_eq!(
+            res.err().map(|e| e.kind()),
+            Some(std::io::ErrorKind::UnexpectedEof)
+        );
 
         Ok(()) as io::Result<()>
     };
