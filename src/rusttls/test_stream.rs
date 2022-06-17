@@ -5,7 +5,7 @@ use futures_util::io::{AsyncReadExt, AsyncWriteExt};
 use futures_util::task::{noop_waker_ref, Context};
 use futures_util::{future, ready};
 use rustls::{
-    Certificate, ClientConfig, ClientConnection, Connection, PrivateKey, RootCertStore,
+    Certificate, ClientConfig, ClientConnection, ConnectionCommon, PrivateKey, RootCertStore,
     ServerConfig, ServerConnection, ServerName,
 };
 use rustls_pemfile::{certs, rsa_private_keys};
@@ -17,9 +17,9 @@ use std::{
     io::{self, BufReader, Cursor, Read, Write},
 };
 
-struct Good<'a>(&'a mut Connection);
+struct Good<'a, D: Unpin>(&'a mut ConnectionCommon<D>);
 
-impl<'a> AsyncRead for Good<'a> {
+impl<'a, D: Unpin> AsyncRead for Good<'a, D> {
     fn poll_read(
         mut self: Pin<&mut Self>,
         _cx: &mut Context<'_>,
@@ -29,7 +29,7 @@ impl<'a> AsyncRead for Good<'a> {
     }
 }
 
-impl<'a> AsyncWrite for Good<'a> {
+impl<'a, D: Unpin> AsyncWrite for Good<'a, D> {
     fn poll_write(
         mut self: Pin<&mut Self>,
         _cx: &mut Context<'_>,
@@ -221,7 +221,7 @@ fn stream_eof() -> io::Result<()> {
     block_on(fut)
 }
 
-fn make_pair() -> (Connection, Connection) {
+fn make_pair() -> (ServerConnection, ClientConnection) {
     const CERT: &str = include_str!("../../tests/end.cert");
     const CHAIN: &str = include_str!("../../tests/end.chain");
     const RSA: &str = include_str!("../../tests/end.rsa");
@@ -260,12 +260,12 @@ fn make_pair() -> (Connection, Connection) {
 
     let client = ClientConnection::new(Arc::new(cconfig), domain).unwrap();
 
-    (server.into(), client.into())
+    (server, client)
 }
 
 fn do_handshake(
-    client: &mut Connection,
-    server: &mut Connection,
+    client: &mut ClientConnection,
+    server: &mut ServerConnection,
     cx: &mut Context<'_>,
 ) -> Poll<io::Result<()>> {
     let mut good = Good(server);

@@ -1,14 +1,14 @@
 use futures_core::ready;
 use futures_io::{AsyncRead, AsyncWrite};
-use rustls::Connection;
+use rustls::ConnectionCommon;
 use std::io::{self, Read, Write};
 use std::marker::Unpin;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-pub struct Stream<'a, IO> {
+pub struct Stream<'a, IO, D> {
     pub io: &'a mut IO,
-    pub session: &'a mut Connection,
+    pub session: &'a mut ConnectionCommon<D>,
     pub eof: bool,
 }
 
@@ -23,8 +23,8 @@ enum Focus {
     Writable,
 }
 
-impl<'a, IO: AsyncRead + AsyncWrite + Unpin> Stream<'a, IO> {
-    pub fn new(io: &'a mut IO, session: &'a mut Connection) -> Self {
+impl<'a, IO: AsyncRead + AsyncWrite + Unpin, D: Unpin> Stream<'a, IO, D> {
+    pub fn new(io: &'a mut IO, session: &'a mut ConnectionCommon<D>) -> Self {
         Stream {
             io,
             session,
@@ -153,7 +153,7 @@ impl<'a, IO: AsyncRead + AsyncWrite + Unpin> Stream<'a, IO> {
     }
 }
 
-impl<'a, IO: AsyncRead + AsyncWrite + Unpin> WriteTls<IO> for Stream<'a, IO> {
+impl<'a, IO: AsyncRead + AsyncWrite + Unpin, D: Unpin> WriteTls<IO> for Stream<'a, IO, D> {
     fn write_tls(&mut self, cx: &mut Context) -> io::Result<usize> {
         // TODO writev
 
@@ -183,7 +183,7 @@ impl<'a, IO: AsyncRead + AsyncWrite + Unpin> WriteTls<IO> for Stream<'a, IO> {
     }
 }
 
-impl<'a, IO: AsyncRead + AsyncWrite + Unpin> AsyncRead for Stream<'a, IO> {
+impl<'a, IO: AsyncRead + AsyncWrite + Unpin, D: Unpin> AsyncRead for Stream<'a, IO, D> {
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context,
@@ -211,7 +211,7 @@ impl<'a, IO: AsyncRead + AsyncWrite + Unpin> AsyncRead for Stream<'a, IO> {
     }
 }
 
-impl<'a, IO: AsyncRead + AsyncWrite + Unpin> AsyncWrite for Stream<'a, IO> {
+impl<'a, IO: AsyncRead + AsyncWrite + Unpin, D: Unpin> AsyncWrite for Stream<'a, IO, D> {
     fn poll_write(self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<io::Result<usize>> {
         let this = self.get_mut();
 

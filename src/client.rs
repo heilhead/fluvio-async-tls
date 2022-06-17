@@ -1,13 +1,10 @@
 //! The client end of a TLS connection.
 
-#[cfg(feature = "early-data")]
-use rustls::client::WriteEarlyData;
-
 use crate::common::tls_state::TlsState;
 use crate::rusttls::stream::Stream;
 use futures_core::ready;
 use futures_io::{AsyncRead, AsyncWrite};
-use rustls::Connection;
+use rustls::ClientConnection;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -17,7 +14,7 @@ use std::{io, mem};
 /// Wraps the underlying TCP stream.
 pub struct TlsStream<IO> {
     pub(crate) io: IO,
-    pub(crate) session: Connection,
+    pub(crate) session: ClientConnection,
     pub(crate) state: TlsState,
 
     #[cfg(feature = "early-data")]
@@ -90,17 +87,20 @@ where
             TlsState::EarlyData => {
                 let this = self.get_mut();
 
+                let is_early_data_accepted = this.session.is_early_data_accepted();
+                let is_handshaking = this.session.is_handshaking();
+
                 let mut stream =
                     Stream::new(&mut this.io, &mut this.session).set_eof(!this.state.readable());
                 let (pos, data) = &mut this.early_data;
 
                 // complete handshake
-                if stream.session.is_handshaking() {
+                if is_handshaking {
                     ready!(stream.complete_io(cx))?;
                 }
 
                 // write early data (fallback)
-                if !is_early_data_accepted(&stream.session) {
+                if !is_early_data_accepted {
                     while *pos < data.len() {
                         let len = ready!(stream.as_mut_pin().poll_write(cx, &data[*pos..]))?;
                         *pos += len;
@@ -151,18 +151,15 @@ where
         buf: &[u8],
     ) -> Poll<io::Result<usize>> {
         let this = self.get_mut();
-        let mut stream =
-            Stream::new(&mut this.io, &mut this.session).set_eof(!this.state.readable());
 
         match this.state {
             #[cfg(feature = "early-data")]
             TlsState::EarlyData => {
                 use std::io::Write;
-
                 let (pos, data) = &mut this.early_data;
 
                 // write early data
-                if let Some(mut early_data) = early_data(&mut stream.session) {
+                if let Some(mut early_data) = this.session.early_data() {
                     let len = match early_data.write(buf) {
                         Ok(n) => n,
                         Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => {
@@ -174,13 +171,18 @@ where
                     return Poll::Ready(Ok(len));
                 }
 
+                let is_early_data_accepted = this.session.is_early_data_accepted();
+
+                let mut stream =
+                    Stream::new(&mut this.io, &mut this.session).set_eof(!this.state.readable());
+
                 // complete handshake
                 if stream.session.is_handshaking() {
                     ready!(stream.complete_io(cx))?;
                 }
 
                 // write early data (fallback)
-                if !is_early_data_accepted(&stream.session) {
+                if !is_early_data_accepted {
                     while *pos < data.len() {
                         let len = ready!(stream.as_mut_pin().poll_write(cx, &data[*pos..]))?;
                         *pos += len;
@@ -192,7 +194,11 @@ where
                 data.clear();
                 stream.as_mut_pin().poll_write(cx, buf)
             }
-            _ => stream.as_mut_pin().poll_write(cx, buf),
+
+            _ => Stream::new(&mut this.io, &mut this.session)
+                .set_eof(!this.state.readable())
+                .as_mut_pin()
+                .poll_write(cx, buf),
         }
     }
 
@@ -213,25 +219,5 @@ where
         let mut stream =
             Stream::new(&mut this.io, &mut this.session).set_eof(!this.state.readable());
         stream.as_mut_pin().poll_close(cx)
-    }
-}
-
-/// `ClientConnection` specific, returns `false` for `ServerConnection`.
-#[cfg(feature = "early-data")]
-#[inline]
-fn is_early_data_accepted(conn: &Connection) -> bool {
-    match conn {
-        Connection::Client(client) => client.is_early_data_accepted(),
-        _ => false,
-    }
-}
-
-/// `ClientConnection` specific, returns `None` for `ServerConnection`.
-#[cfg(feature = "early-data")]
-#[inline]
-fn early_data(conn: &mut Connection) -> Option<WriteEarlyData> {
-    match conn {
-        Connection::Client(client) => client.early_data(),
-        _ => None,
     }
 }

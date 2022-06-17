@@ -140,8 +140,6 @@ impl TlsConnector {
 
         f(&mut session);
 
-        let session = session.into();
-
         #[cfg(not(feature = "early-data"))]
         {
             Connect(ConnectInner::Handshake(client::MidHandshake::Handshaking(

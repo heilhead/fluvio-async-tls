@@ -50,7 +50,7 @@ impl TlsAcceptor {
 
         Ok(Accept(server::MidHandshake::Handshaking(
             server::TlsStream {
-                session: session.into(),
+                session,
                 io: stream,
                 state: TlsState::Stream,
             },

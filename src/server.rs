@@ -5,7 +5,7 @@ use crate::rusttls::stream::Stream;
 
 use futures_core::ready;
 use futures_io::{AsyncRead, AsyncWrite};
-use rustls::{Certificate, Connection};
+use rustls::{Certificate, ServerConnection};
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -15,7 +15,7 @@ use std::{io, mem};
 /// Wraps the underlying TCP stream.
 pub struct TlsStream<IO> {
     pub(crate) io: IO,
-    pub(crate) session: Connection,
+    pub(crate) session: ServerConnection,
     pub(crate) state: TlsState,
 }
 
