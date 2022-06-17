@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - staging
+      - trying
+  pull_request:
+    branches: [master]
+
+concurrency:
+  group: ${{ github.head_ref || 'ci_staging' }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Check ${{ matrix.check }} on (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        rust: [stable]
+        check: [test]
+        include:
+          - os: ubuntu-latest
+            rust: stable
+            check: fmt
+          - os: ubuntu-latest
+            rust: stable
+            check: clippy
+          - os: ubuntu-latest
+            rust: stable
+            check: audit
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install ${{ matrix.rust }}
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust }}
+          override: true
+      - uses: Swatinem/rust-cache@v1
+        with:
+          key: ${{ matrix.os }}-${{ matrix.check }}
+      - name: Clippy
+        if: ${{ matrix.check == 'clippy' }}
+        run: make check-clippy
+      - name: Fmt
+        if: ${{ matrix.check == 'fmt' }}
+        run: make check-fmt
+      - name: Test
+        if: ${{ matrix.check == 'test' }}
+        timeout-minutes: 15
+        run: make test-all
+      - name: cargo audit
+        if: ${{ matrix.check == 'audit' }}
+        timeout-minutes: 15
+        uses: actions-rs/audit-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  done:
+    name: Done
+    needs:
+      - test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Done
+        run: echo "Done!"
