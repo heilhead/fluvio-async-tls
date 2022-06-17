@@ -1,12 +1,6 @@
 name: CI
 
-on:
-  push:
-    branches:
-      - staging
-      - trying
-  pull_request:
-    branches: [master]
+on: push
 
 concurrency:
   group: ${{ github.head_ref || 'ci_staging' }}
