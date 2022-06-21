@@ -12,3 +12,7 @@ install-clippy:
 
 check-clippy:	install-clippy
 	cargo clippy --all-features -- -D warnings
+
+check-examples:
+	(cd examples/client && cargo build)
+	(cd examples/server && cargo build)

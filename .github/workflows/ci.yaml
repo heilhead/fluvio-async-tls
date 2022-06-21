@@ -25,6 +25,9 @@ jobs:
           - os: ubuntu-latest
             rust: stable
             check: audit
+          - os: ubuntu-latest
+            rust: stable
+            check: examples
 
     steps:
       - uses: actions/checkout@v3
@@ -46,6 +49,10 @@ jobs:
         if: ${{ matrix.check == 'test' }}
         timeout-minutes: 15
         run: make test-all
+      - name: Examples
+        if: ${{ matrix.check == 'examples' }}
+        timeout-minutes: 15
+        run: make check-examples
       - name: cargo audit
         if: ${{ matrix.check == 'audit' }}
         timeout-minutes: 15
