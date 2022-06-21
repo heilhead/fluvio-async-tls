@@ -2,10 +2,9 @@ use async_std::io;
 use async_std::net::TcpStream;
 use async_std::prelude::*;
 use async_std::task;
-use async_tls::TlsConnector;
-
-use rustls::ClientConfig;
-
+use fluvio_async_tls::TlsConnector;
+use rustls::{Certificate, ClientConfig, RootCertStore};
+use rustls_pemfile::certs;
 use std::io::Cursor;
 use std::net::ToSocketAddrs;
 use std::path::{Path, PathBuf};
@@ -81,12 +80,24 @@ fn main() -> io::Result<()> {
 }
 
 async fn connector_for_ca_file(cafile: &Path) -> io::Result<TlsConnector> {
-    let mut config = ClientConfig::new();
     let file = async_std::fs::read(cafile).await?;
-    let mut pem = Cursor::new(file);
-    config
-        .root_store
-        .add_pem_file(&mut pem)
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid cert"))?;
+
+    let certs = certs(&mut Cursor::new(file))
+        .unwrap()
+        .into_iter()
+        .map(Certificate)
+        .collect::<Vec<_>>();
+
+    let mut root_store = RootCertStore::empty();
+
+    for cert in &certs {
+        root_store.add(cert).unwrap();
+    }
+
+    let config = ClientConfig::builder()
+        .with_safe_defaults()
+        .with_root_certificates(root_store)
+        .with_no_client_auth();
+
     Ok(TlsConnector::from(Arc::new(config)))
 }

@@ -2,10 +2,9 @@ use async_std::io;
 use async_std::net::{TcpListener, TcpStream};
 use async_std::prelude::*;
 use async_std::task;
-use async_tls::TlsAcceptor;
-use rustls::internal::pemfile::{certs, rsa_private_keys};
-use rustls::{Certificate, NoClientAuth, PrivateKey, ServerConfig};
-
+use fluvio_async_tls::TlsAcceptor;
+use rustls::{Certificate, PrivateKey, ServerConfig};
+use rustls_pemfile::{certs, rsa_private_keys};
 use std::fs::File;
 use std::io::BufReader;
 use std::net::ToSocketAddrs;
@@ -29,12 +28,14 @@ struct Options {
 /// Load the passed certificates file
 fn load_certs(path: &Path) -> io::Result<Vec<Certificate>> {
     certs(&mut BufReader::new(File::open(path)?))
+        .map(|v| v.into_iter().map(Certificate).collect())
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid cert"))
 }
 
 /// Load the passed keys file
 fn load_keys(path: &Path) -> io::Result<Vec<PrivateKey>> {
     rsa_private_keys(&mut BufReader::new(File::open(path)?))
+        .map(|v| v.into_iter().map(PrivateKey).collect())
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid key"))
 }
 
@@ -46,11 +47,12 @@ fn load_config(options: &Options) -> io::Result<ServerConfig> {
     let certs = load_certs(&options.cert)?;
     let mut keys = load_keys(&options.key)?;
 
-    // we don't use client authentication
-    let mut config = ServerConfig::new(NoClientAuth::new());
-    config
+    let config = ServerConfig::builder()
+        .with_safe_defaults()
+        // we don't use client authentication
+        .with_no_client_auth()
         // set this server to use one cert together with the loaded private key
-        .set_single_cert(certs, keys.remove(0))
+        .with_single_cert(certs, keys.remove(0))
         .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
 
     Ok(config)
@@ -62,7 +64,10 @@ async fn handle_connection(acceptor: &TlsAcceptor, tcp_stream: &mut TcpStream) -
     println!("Connection from: {}", peer_addr);
 
     // Calling `acceptor.accept` will start the TLS handshake
-    let handshake = acceptor.accept(tcp_stream);
+    let handshake = acceptor
+        .accept(tcp_stream)
+        .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+
     // The handshake is a future we can await to get an encrypted
     // stream back.
     let mut tls_stream = handshake.await?;
